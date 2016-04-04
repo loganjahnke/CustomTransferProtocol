@@ -76,23 +76,21 @@ public class Server {
             DatagramSocket theServer = new DatagramSocket(portNumber);
             byte[] receiveData = new byte[256];
 
-            System.out.printf("Listening on udp:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), portNumber);     
+            System.out.printf("Listening on UDP:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), portNumber);     
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
             theServer.receive(receivePacket); // Receive custom header
             determineFileName(receiveData);
 
             while(true) {
-                  theServer.receive(receivePacket);
-                  String sentence = new String(receivePacket.getData(), 0, receivePacket.getLength());
-                  System.out.println("RECEIVED: " + sentence);
-                  // now send acknowledgement packet back to sender
-//                  InetAddress IPAddress = receivePacket.getAddress();
-//                  String sendString = "polo";
-//                  byte[] sendData = sendString.getBytes("UTF-8");
-//                  DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, receivePacket.getPort());
-//                  serverSocket.send(sendPacket);
+                theServer.receive(receivePacket);
+                System.out.println(new String(receiveData));
+                // now send acknowledgement packet back to sender
+                String ackString = "A";
+                byte[] ack = ackString.getBytes();
+                DatagramPacket sendACK = new DatagramPacket(ack, ack.length, receivePacket.getAddress(), receivePacket.getPort());
+                theServer.send(sendACK);
             }
-            createFile();
+            //createFile();
         } catch (Exception e) {
             System.out.println("Something bad happened... Program exiting.\n" + e);
             System.exit(0);

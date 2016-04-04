@@ -80,6 +80,7 @@ public class Client {
         try {
             DatagramSocket clientSocket = new DatagramSocket(12345);
             byte[] receiveData = new byte[256];
+            byte[] ack = new byte[1];
 
             System.out.printf("Listening on udp:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), 12345);
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
@@ -89,6 +90,8 @@ public class Client {
             // Send custom header
             DatagramPacket header = new DatagramPacket(theHeader, theHeader.length, InetAddress.getByName(proxyIP), portNumber);
             clientSocket.send(header);
+            
+            DatagramPacket receiveACK = new DatagramPacket(ack, ack.length);
             
             while(true) {
                 if (offset + packetLength > fileInBytes.length) { // reset length of packet for last chunk of data
@@ -101,15 +104,9 @@ public class Client {
                 clientSocket.send(sendPacket);
                 offset += 256;
                 
-//                serverSocket.receive(receivePacket);
-//                String sentence = new String(receivePacket.getData(), 0, receivePacket.getLength());
-//                System.out.println("RECEIVED: " + sentence);
-//                // now send acknowledgement packet back to sender
-//                InetAddress IPAddress = receivePacket.getAddress();
-//                String sendString = "polo";
-//                byte[] sendData = sendString.getBytes("UTF-8");
-//                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, receivePacket.getPort());
-//                serverSocket.send(sendPacket);
+                clientSocket.receive(receiveACK);
+                System.out.println("RECEIVED ACK: " + ack.toString());
+                // now send acknowledgement packet back to sender
             }
         } catch (Exception e) {
             System.out.println("Something bad happened... Program exiting.\n" + e);
