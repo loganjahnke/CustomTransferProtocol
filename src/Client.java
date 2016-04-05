@@ -49,6 +49,8 @@ public class Client {
     
     /**
      * Puts all of the file data into a byte array
+     *
+     * @param file - the file to send data
      */
     public void constructFileByteArray(File file) {
         try {
@@ -69,7 +71,21 @@ public class Client {
      * Creates a custom header to send to the server
      */
     public void createHeader() {
-        this.theHeader = new String("Length: " + fileInBytes.length + "\nFile Name: " + file.getName() + "\n").getBytes();
+        this.theHeader = new String("0\nLength: " + fileInBytes.length + "\nFile Name: " + file.getName() + "\n").getBytes();
+    }
+    
+    
+    /**
+     * Creates a custom header to send to the server
+     */
+    public byte[] createPacketData(int seqNum, int offset, int packetLength) {
+        byte[] fileChunk = new byte[packetLength+1];
+        fileChunk[0] = (byte)seqNum;
+        for (int i = 1; i <= packetLength; i++)
+            for (int j = offset; j < offset + packetLength; j++)
+                fileChunk[i] = fileInBytes[j];
+                
+        return fileChunk;
     }
     
     
@@ -79,35 +95,53 @@ public class Client {
     public void run() {
         try {
             DatagramSocket clientSocket = new DatagramSocket(12345);
-            byte[] receiveData = new byte[256];
-            byte[] ack = new byte[1];
+            clientSocket.setSoTimeout(1000); // Timeout is 1 second
+            byte[] ackData = new byte[2]; // First byte is sequence number, second is ack (1) or nck (0)
+            ackData[0] = 0;
+            ackData[1] = 0;
 
-            System.out.printf("Listening on udp:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), 12345);
-            DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+            System.out.printf("Listening on UDP:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), 12345);
+            
+            // Set up DatagramPackets
+            DatagramPacket header = new DatagramPacket(theHeader, theHeader.length, InetAddress.getByName(proxyIP), portNumber);
+            DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
+            
+            // Set up packet splitting
             int offset = 0;
             int packetLength = 256;
+            int seqNum = 0;
             
             // Send custom header
-            DatagramPacket header = new DatagramPacket(theHeader, theHeader.length, InetAddress.getByName(proxyIP), portNumber);
-            clientSocket.send(header);
+            do {
+                clientSocket.send(header);
+                System.out.println("Sent header");
+                try {
+                    clientSocket.receive(ackPacket);
+                    System.out.println("Received ack");
+                } catch (SocketTimeoutException e) {
+                    System.out.println("Packet loss, resending header...");
+                    continue;
+                }
+            } while(ackData[1] == 0);
             
-            DatagramPacket receiveACK = new DatagramPacket(ack, ack.length);
-            
-            while(true) {
+            // Send file data
+            while (true) {
+                // Determine offset
+                offset = seqNum * 256;
+                
                 if (offset + packetLength > fileInBytes.length) { // reset length of packet for last chunk of data
-                    System.out.println(packetLength);
                     packetLength = fileInBytes.length - offset;
-                    System.out.println(packetLength);
                 }
                 if (offset > fileInBytes.length) break; // break if offset passes final byte of file
+                
+                // Create data for packet
+                createPacketData(seqNum, offset, packetLength);
+                
+                // Create DatagramPacket and send it to server
                 DatagramPacket sendPacket = new DatagramPacket(fileInBytes, offset, packetLength, InetAddress.getByName(proxyIP), portNumber);
                 clientSocket.send(sendPacket);
-                offset += 256;
-                
-                clientSocket.receive(receiveACK);
-                System.out.println("RECEIVED ACK: " + ack.toString());
-                // now send acknowledgement packet back to sender
             }
+            System.out.println("File sent");
         } catch (Exception e) {
             System.out.println("Something bad happened... Program exiting.\n" + e);
             System.exit(0);
