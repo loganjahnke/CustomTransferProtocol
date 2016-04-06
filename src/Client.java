@@ -13,6 +13,8 @@ public class Client {
     private File file;
     private byte[] fileInBytes;
     private byte[] theHeader;
+    private int numberOfChunks;
+    private SequenceConverter convert;
     
     /**
      * Constructor for Client
@@ -25,6 +27,7 @@ public class Client {
         this.proxyIP = proxyIP;
         this.portNumber = portNumber;
         this.filePath = filePath;
+        this.convert = new SequenceConverter();
     }
     
     
@@ -64,6 +67,8 @@ public class Client {
             System.out.println("Something bad happened... Program exiting.\n" + e);
             System.exit(0);
         }
+        this.numberOfChunks = fileInBytes.length / 256;
+        if (fileInBytes.length % 256 != 0) this.numberOfChunks++;
     }
     
     
@@ -79,13 +84,24 @@ public class Client {
      * Creates a custom header to send to the server
      */
     public byte[] createPacketData(int seqNum, int offset, int packetLength) {
-        byte[] fileChunk = new byte[packetLength+1];
-        fileChunk[0] = (byte)seqNum;
-        for (int i = 1; i <= packetLength; i++)
+        byte[] fileChunk = new byte[packetLength+4];
+        byte[] seqChunk = convert.intToByte(seqNum);
+        for (int i = 0; i < 4; i++)
+            fileChunk[i] = seqChunk[i];
+        for (int i = 4; i <= packetLength+3; i++)
             for (int j = offset; j < offset + packetLength; j++)
                 fileChunk[i] = fileInBytes[j];
-                
+
         return fileChunk;
+    }
+    
+    
+    /**
+     * Creates a custom header to send to the server
+     */
+    public void finallySent() {
+        System.out.println("File successfully sent.\nProgram exiting.");
+        System.exit(0);
     }
     
     
@@ -97,6 +113,7 @@ public class Client {
             DatagramSocket clientSocket = new DatagramSocket(12345);
             clientSocket.setSoTimeout(1000); // Timeout is 1 second
             byte[] ackData = new byte[2]; // First byte is sequence number, second is ack (1) or nck (0)
+            byte[] ackChecker = new byte[numberOfChunks]; // For checking acks received: (0) = not received, (1) = received
             ackData[0] = 0;
             ackData[1] = 0;
 
@@ -124,24 +141,59 @@ public class Client {
                 }
             } while(ackData[1] == 0);
             
-            // Send file data
+            // While sending and receiving packets
             while (true) {
-                // Determine offset
-                offset = seqNum * 256;
                 
-                if (offset + packetLength > fileInBytes.length) { // reset length of packet for last chunk of data
-                    packetLength = fileInBytes.length - offset;
+                seqNum = 0;
+                
+                // Send file data
+                while (seqNum < ackChecker.length) {
+                    while (ackChecker[seqNum] == 1) {
+                        seqNum++;
+                        if (seqNum >= ackChecker.length) finallySent();
+                    }
+                    // Determine offset
+                    offset = seqNum * 256;
+
+                    // Reset length of packet for last chunk of data
+                    if (offset + packetLength > fileInBytes.length) {
+                        packetLength = fileInBytes.length - offset;
+                    }
+                    if (offset > fileInBytes.length) break;
+                    
+                    System.out.println("Sending sequence: " + seqNum);
+
+                    // Create data for packet
+                    byte[] fileChunk = createPacketData(seqNum, offset, packetLength);
+
+                    // Create DatagramPacket and send it to server
+                    DatagramPacket sendPacket = new DatagramPacket(fileChunk, fileChunk.length, InetAddress.getByName(proxyIP), portNumber);
+                    clientSocket.send(sendPacket);
+
+                    // Increment Sequence Number
+                    seqNum++;
                 }
-                if (offset > fileInBytes.length) break; // break if offset passes final byte of file
                 
-                // Create data for packet
-                createPacketData(seqNum, offset, packetLength);
-                
-                // Create DatagramPacket and send it to server
-                DatagramPacket sendPacket = new DatagramPacket(fileInBytes, offset, packetLength, InetAddress.getByName(proxyIP), portNumber);
-                clientSocket.send(sendPacket);
+                seqNum = 0;
+
+                // Receive acks
+                while (true) {
+                    try {
+                        clientSocket.receive(ackPacket);
+                        ackChecker[(int)ackData[0]] = ackData[1];
+                        System.out.println("Receiving ack: " + (int)ackData[0]);
+                        System.out.println("Ack says: " + ackData[1]);
+                        while (ackChecker[seqNum] == 1) {
+                            seqNum++;
+                            if (seqNum >= ackChecker.length) finallySent();
+                        }
+                    } catch (SocketTimeoutException e) {
+                        System.out.println("Packet loss, resending packet(s)...");
+                        break;
+                    }
+                }
             }
-            System.out.println("File sent");
+            
         } catch (Exception e) {
             System.out.println("Something bad happened... Program exiting.\n" + e);
             System.exit(0);

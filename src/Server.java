@@ -11,6 +11,7 @@ public class Server {
     private String directoryName;
     private int fileLength;
     private String fileName;
+    private SequenceConverter convert;
     
     /**
      * Constructor for Server
@@ -21,6 +22,7 @@ public class Server {
     public Server(int portNumber, String directoryName) {
         this.portNumber = portNumber;
         this.directoryName = directoryName;
+        this.convert = new SequenceConverter();
     }
     
     
@@ -68,9 +70,24 @@ public class Server {
     
     /**
      * Connects data together and creates the file
+     * Quits program no matter the outcome
+     *
+     * @param dataKeeper - byte[][] that stores all data for each sequence number
      */
-    public void createFile() {
-        
+    public void createFile(byte[][] dataKeeper) {
+        try {
+            File file = new File("" + directoryName + "/" + fileName);
+            file.createNewFile();
+            FileOutputStream ostream = new FileOutputStream(file, true);
+            for (int i = 0; i < dataKeeper.length; i++) {
+                ostream.write(dataKeeper[i], 0, dataKeeper[i].length);
+            }
+            System.out.println("File received from client and copied to machine.\nProgram exiting.");
+            System.exit(0);
+        } catch (Exception e) {
+            System.out.println("Error when creating file.\n Program exiting.");
+            System.exit(0);
+        }
     }
     
     
@@ -80,13 +97,16 @@ public class Server {
     public void run() {
         try {
             DatagramSocket theServer = new DatagramSocket(portNumber);
-            byte[] receiveData = new byte[256]; // Array to store packet in
+            theServer.setSoTimeout(1000); // Timeout = 1 second
+            byte[] receiveData = new byte[257]; // Array to store packet in
             byte[] ackData = new byte[2]; // First byte is the sequence number of packet, second is ack (1)
             ackData[0] = 0;
             ackData[1] = 1;
             byte[] nckData = new byte[2]; // First byte is the sequence number of packet, second is nck (0)
             nckData[0] = 0;
             nckData[1] = 0;
+            byte[] ackChecker; // For checking acks received: (0) = not received, (1) = received
+            byte[][] dataKeeper; // For storing file data
 
             System.out.printf("Listening on UDP:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), portNumber); 
             
@@ -96,8 +116,15 @@ public class Server {
             DatagramPacket nckPacket = new DatagramPacket(nckData, nckData.length);
             
             // Receive Custom Header
-            theServer.receive(receivePacket);
-            System.out.println("Received header\nDetermining how many packets will be received...");
+            while (true) {
+                try {
+                    theServer.receive(receivePacket);
+                    System.out.println("Received header\nDetermining how many packets will be received...");
+                    break;
+                } catch (SocketTimeoutException e) {
+                    continue;
+                }
+            }
             
             // Bind port and ip to ack and nck
             ackPacket.setPort(receivePacket.getPort());
@@ -113,17 +140,58 @@ public class Server {
             
             // Send ack
             theServer.send(ackPacket);
+            
+            // Initialize ackChecker and dataKeeper after given header packet
+            int numOfChunks = fileLength / 256;
+            if (numOfChunks % 256 != 0) numOfChunks++;
+            dataKeeper = new byte[numOfChunks][256];
+            ackChecker = new byte[numOfChunks];
+            
+            int seqNum = 0;
+            int numAcksGood = 0;
 
+            // Loop until all data is collected
             while (true) {
-                // Receive Packets
-                theServer.receive(receivePacket);
-                // now send acknowledgement packet back to sender
-                String ackString = "A";
-                byte[] ack = ackString.getBytes();
-                DatagramPacket sendACK = new DatagramPacket(ack, ack.length, receivePacket.getAddress(), receivePacket.getPort());
-                theServer.send(sendACK);
+                
+                // Receive file data
+                while (true) {
+                    try {
+                        // Receive Packets and store data into dataKeeper
+                        theServer.receive(receivePacket);
+                        byte[] seqChunk = new byte[4];
+                        for (int i = 0; i < 4; i++)
+                            seqChunk[i] = receiveData[i];
+                        int index = convert.byteToInt(seqChunk);
+                        for (int i = 1; i <= 256; i++)
+                            dataKeeper[index][i-1] = receiveData[i];
+                        ackChecker[index] = 1;
+                    } catch (SocketTimeoutException e) {
+                        System.out.println("Moving on... Sending acks");
+                        break;
+                    }
+                }
+                
+                seqNum = 0;
+                numAcksGood = 0;
+                
+                // Send acks
+                while (seqNum < ackChecker.length) {
+                    System.out.println("Sending ack: " + seqNum + ":" + ackChecker[seqNum]);
+                    // Receive Packets and store data into dataKeeper
+                    ackData[0] = (byte)seqNum;
+                    ackData[1] = ackChecker[seqNum];
+                    seqNum++;
+                    ackPacket.setData(ackData, 0, ackData.length);
+                    theServer.send(ackPacket);
+                }
+                
+                for (int i = 0; i < numOfChunks; i++) {
+                    if (ackChecker[i] == 1) numAcksGood++;
+                }
+                if (numAcksGood == numOfChunks) createFile(dataKeeper); // If all packets are here, createFile
+                
             }
-            //createFile();
+            
         } catch (Exception e) {
             System.out.println("Something bad happened... Program exiting.\n" + e);
             System.exit(0);
