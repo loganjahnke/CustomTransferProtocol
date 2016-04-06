@@ -108,7 +108,7 @@ public class Server {
             byte[] ackChecker; // For checking acks received: (0) = not received, (1) = received
             byte[][] dataKeeper; // For storing file data
 
-            System.out.printf("Listening on UDP:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), portNumber); 
+            System.out.printf("Listening on CTP"); 
             
             // Create DatagramPackets
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
@@ -181,8 +181,7 @@ public class Server {
                 
                 // Send acks
                 while (seqNum < ackChecker.length) {
-                    System.out.println("Sending ack: " + seqNum + ":" + ackChecker[seqNum]);
-                    // Receive Packets and store data into dataKeeper
+                    System.out.println("Sending ack: " + seqNum + ":" + ackChecker[seqNum] + " of " + ackChecker.length + " acks.");
                     ackData[0] = (byte)seqNum;
                     ackData[1] = ackChecker[seqNum];
                     seqNum++;

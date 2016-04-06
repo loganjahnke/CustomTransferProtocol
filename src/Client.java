@@ -70,7 +70,6 @@ public class Client {
         }
         this.numberOfChunks = fileInBytes.length / 256;
         if (fileInBytes.length % 256 != 0) this.numberOfChunks++;
-        System.out.println(new String(fileInBytes, 0, fileInBytes.length));
     }
     
     
@@ -97,7 +96,6 @@ public class Client {
         for (int i = 8; i <= packetLength+7; i++, j++)
             fileChunk[i] = fileInBytes[j];
 
-        System.out.println(new String(fileChunk, 8, fileChunk.length-8));
         return fileChunk;
     }
     
@@ -123,7 +121,7 @@ public class Client {
             ackData[0] = 0;
             ackData[1] = 0;
 
-            System.out.printf("Listening on UDP:%s:%d%n", InetAddress.getLocalHost().getHostAddress(), 12345);
+            System.out.printf("Listening on CTP");
             
             // Set up DatagramPackets
             DatagramPacket header = new DatagramPacket(theHeader, theHeader.length, InetAddress.getByName(proxyIP), portNumber);
@@ -181,9 +179,10 @@ public class Client {
                 }
                 
                 seqNum = 0;
-
+                int i = 0;
+                
                 // Receive acks
-                while (true) {
+                while (i < numberOfChunks) {
                     try {
                         clientSocket.receive(ackPacket);
                         ackChecker[(int)ackData[0]] = ackData[1];
@@ -193,6 +192,7 @@ public class Client {
                             seqNum++;
                             if (seqNum >= ackChecker.length) finallySent();
                         }
+                        i++;
                     } catch (SocketTimeoutException e) {
                         System.out.println("Packet loss, resending packet(s)...");
                         break;
