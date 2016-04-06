@@ -58,6 +58,7 @@ public class Client {
     public void constructFileByteArray(File file) {
         try {
             InputStream istream = new FileInputStream(file);
+            ByteArrayOutputStream byteOS = new ByteArrayOutputStream();
             int i = 0;
             while (i < fileInBytes.length) {
                 fileInBytes[i] = (byte)istream.read();
@@ -69,6 +70,7 @@ public class Client {
         }
         this.numberOfChunks = fileInBytes.length / 256;
         if (fileInBytes.length % 256 != 0) this.numberOfChunks++;
+        System.out.println(new String(fileInBytes, 0, fileInBytes.length));
     }
     
     
@@ -84,14 +86,18 @@ public class Client {
      * Creates a custom header to send to the server
      */
     public byte[] createPacketData(int seqNum, int offset, int packetLength) {
-        byte[] fileChunk = new byte[packetLength+4];
+        byte[] fileChunk = new byte[packetLength+8];
         byte[] seqChunk = convert.intToByte(seqNum);
+        byte[] lengthChunk = convert.intToByte(packetLength);
+        int j = offset;
         for (int i = 0; i < 4; i++)
             fileChunk[i] = seqChunk[i];
-        for (int i = 4; i <= packetLength+3; i++)
-            for (int j = offset; j < offset + packetLength; j++)
-                fileChunk[i] = fileInBytes[j];
+        for (int i = 4; i < 8; i++)
+            fileChunk[i] = lengthChunk[i-4];
+        for (int i = 8; i <= packetLength+7; i++, j++)
+            fileChunk[i] = fileInBytes[j];
 
+        System.out.println(new String(fileChunk, 8, fileChunk.length-8));
         return fileChunk;
     }
     

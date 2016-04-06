@@ -45,7 +45,7 @@ public class Server {
                 System.out.println("Error in creating directory... Program exiting.\n" + e);
                 System.exit(0);
             }        
-            if (result) {    
+            if (result) {
                 System.out.println("Directory created!");  
             }
         }
@@ -98,7 +98,7 @@ public class Server {
         try {
             DatagramSocket theServer = new DatagramSocket(portNumber);
             theServer.setSoTimeout(1000); // Timeout = 1 second
-            byte[] receiveData = new byte[257]; // Array to store packet in
+            byte[] receiveData = new byte[264]; // Array to store packet in
             byte[] ackData = new byte[2]; // First byte is the sequence number of packet, second is ack (1)
             ackData[0] = 0;
             ackData[1] = 1;
@@ -144,7 +144,7 @@ public class Server {
             // Initialize ackChecker and dataKeeper after given header packet
             int numOfChunks = fileLength / 256;
             if (numOfChunks % 256 != 0) numOfChunks++;
-            dataKeeper = new byte[numOfChunks][256];
+            dataKeeper = new byte[numOfChunks][];
             ackChecker = new byte[numOfChunks];
             
             int seqNum = 0;
@@ -159,11 +159,16 @@ public class Server {
                         // Receive Packets and store data into dataKeeper
                         theServer.receive(receivePacket);
                         byte[] seqChunk = new byte[4];
+                        byte[] lengthChunk = new byte[4];
                         for (int i = 0; i < 4; i++)
                             seqChunk[i] = receiveData[i];
+                        for (int i = 4; i < 8; i++)
+                            lengthChunk[i-4] = receiveData[i];
                         int index = convert.byteToInt(seqChunk);
-                        for (int i = 1; i <= 256; i++)
-                            dataKeeper[index][i-1] = receiveData[i];
+                        int plength = convert.byteToInt(lengthChunk);
+                        dataKeeper[index] = new byte[plength];
+                        for (int i = 8; i <= plength+7; i++)
+                            dataKeeper[index][i-8] = receiveData[i];
                         ackChecker[index] = 1;
                     } catch (SocketTimeoutException e) {
                         System.out.println("Moving on... Sending acks");
